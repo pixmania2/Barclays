@@ -1,0 +1,51 @@
+
+services:
+  user_service:
+    build: 
+      context: ./user_service
+    container_name: user_service
+    ports:
+      - "5001:5001"
+    # If you need inter-service calls using Docker DNS, you can set a hostname
+    # networks: 
+    #   - my_network
+
+  restaurant_service:
+    build:
+      context: ./restaurant_service
+    container_name: restaurant_service
+    ports:
+      - "5002:5002"
+    # networks: 
+    #   - my_network
+
+  order_service:
+    build: 
+      context: ./order_service
+    container_name: order_service
+    ports:
+      - "5003:5003"
+    # networks: 
+    #   - my_network
+
+  payment_service:
+    build:
+      context: ./payment_service
+    container_name: payment_service
+    ports:
+      - "5004:5004"
+    # networks: 
+    #   - my_network
+
+  delivery_service:
+    build:
+      context: ./delivery_service
+    container_name: delivery_service
+    ports:
+      - "5005:5005"
+    # networks: 
+    #   - my_network
+
+# networks:
+#   my_network:
+#     driver: bridge
