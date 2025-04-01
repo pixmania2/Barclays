@@ -4,15 +4,9 @@ import uuid
 from datetime import datetime
 
 app = Flask(__name__)
-
-# In-memory transactions
 transactions = {}
 
-# Custom text logs
-logging.basicConfig(
-    format='%(asctime)s %(levelname)s %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
 @app.route('/api/payments/charge', methods=['POST'])
 def charge():
@@ -20,7 +14,6 @@ def charge():
     transaction_id = str(uuid.uuid4())
     order_id = data.get("orderId", "unknown")
     amount = data.get("amount", 0.0)
-
     transactions[transaction_id] = {
         "transaction_id": transaction_id,
         "order_id": order_id,
@@ -28,12 +21,8 @@ def charge():
         "status": "CHARGED",
         "timestamp": datetime.now().isoformat()
     }
-
-    # Custom text log format:
-    # "PAYMENT_LOG | tx_id=... | order_id=... | amount=... | status=..."
     log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | order_id={order_id} | amount={amount} | status=CHARGED"
     app.logger.info(log_entry)
-
     return jsonify({"status": "charged", "transaction_id": transaction_id}), 201
 
 @app.route('/api/payments/refund', methods=['POST'])
@@ -42,11 +31,9 @@ def refund():
     transaction_id = data.get("transactionId")
     if not transaction_id or transaction_id not in transactions:
         return jsonify({"error": "Transaction not found"}), 404
-
     transactions[transaction_id]["status"] = "REFUNDED"
     log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | status=REFUNDED"
     app.logger.info(log_entry)
-
     return jsonify({"status": "refunded", "transaction_id": transaction_id}), 200
 
 @app.route('/api/payments/<transaction_id>', methods=['GET'])
@@ -56,6 +43,66 @@ def get_transaction(transaction_id):
         return jsonify({"error": "Transaction not found"}), 404
     return jsonify(tx)
 
+@app.route('/api/payments/<transaction_id>/update_status', methods=['PATCH'])
+def update_payment_status(transaction_id):
+    data = request.json or {}
+    tx = transactions.get(transaction_id)
+    if not tx:
+        return jsonify({"error": "Transaction not found"}), 404
+    new_status = data.get("status", tx["status"])
+    tx["status"] = new_status
+    log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | status={new_status}"
+    app.logger.info(log_entry)
+    return jsonify({"status": "updated", "transaction": tx}), 200
+
+from time import time
+from flask import request
+from prometheus_client import Counter, Histogram, generate_latest
+
+# Create Prometheus metrics objects
+REQUEST_LATENCY = Histogram(
+    'flask_request_duration_seconds', 
+    'Flask Request Latency',
+    ['method', 'endpoint', 'http_status']
+)
+REQUEST_COUNT = Counter(
+    'flask_request_count', 
+    'Flask Request Count',
+    ['method', 'endpoint', 'http_status']
+)
+
+# Before each request, record the start time
+@app.before_request
+def start_timer():
+    request.start_time = time()
+
+# After each request, record latency and count
+@app.after_request
+def record_metrics(response):
+    resp_time = time() - request.start_time
+    # Record the latency for the given method, endpoint, and HTTP status code
+    REQUEST_LATENCY.labels(
+        method=request.method, 
+        endpoint=request.path, 
+        http_status=response.status_code
+    ).observe(resp_time)
+    
+    # Increment the request counter
+    REQUEST_COUNT.labels(
+        method=request.method, 
+        endpoint=request.path, 
+        http_status=response.status_code
+    ).inc()
+    
+    return response
+
+# Expose a /metrics endpoint for Prometheus to scrape
+@app.route('/metrics')
+def metrics():
+    return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
+
+
+    
 if __name__ == '__main__':
-    # Run on port 5004
+    print("Registered routes:", app.url_map)
     app.run(port=5004, host='0.0.0.0')
