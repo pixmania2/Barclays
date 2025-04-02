@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import timedelta
 from scipy.stats import linregress
+from statsmodels.tsa.arima.model import ARIMA
 
-filename = './synthetic_dataset.csv'
 # -------------------------------------------
 # Step 1: Load the Synthetic Dataset
 # -------------------------------------------
@@ -113,15 +113,26 @@ def detect_error_rate_anomalies(grouped, percentile_threshold=99):
         return pd.DataFrame()
 
 # -------------------------------------------
-# Step 6: Forecast Next Interval Metrics (Simple Forecast)
+# Step 6: Advanced Forecasting with ARIMA Model
 # -------------------------------------------
-def forecast_next_interval(grouped, endpoint, column='avg_response_time'):
+def forecast_next_interval_arima(grouped, endpoint, column='avg_response_time'):
+    """
+    Use an ARIMA(1,1,1) model to forecast the next interval for the specified column.
+    If insufficient data is available or an error occurs, return None.
+    """
     ep_data = grouped[grouped['endpoint'] == endpoint].sort_values('time_bin')
-    # For demonstration, use the average of the last three intervals as the forecast
-    if len(ep_data) < 3:
-        return None
-    forecast = ep_data[column].tail(3).mean()
-    return forecast
+    # Set time_bin as index
+    ts = ep_data.set_index('time_bin')[column]
+    if len(ts) < 6:
+         return None
+    try:
+         model = ARIMA(ts, order=(1, 1, 1))
+         model_fit = model.fit()
+         forecast = model_fit.forecast(steps=1)[0]
+         return forecast
+    except Exception as e:
+         print(f"Forecasting error for endpoint {endpoint} ({column}): {e}")
+         return None
 
 # -------------------------------------------
 # Utility: Generate Alerts for Anomalies
@@ -167,23 +178,25 @@ def main():
     print(error_anomalies)
     alert_anomalies(error_anomalies, 'error_rate')
     
-    # Forecast the next interval for each endpoint (both response time and error rate)
+    # -------------------------------------------
+    # Step 7: Advanced Forecasting for Each Endpoint
+    # -------------------------------------------
     endpoints = grouped['endpoint'].unique()
     forecasts = []
     for ep in endpoints:
-        forecast_rt = forecast_next_interval(grouped, ep, column='avg_response_time')
-        forecast_err = forecast_next_interval(grouped, ep, column='error_rate')
+        forecast_rt = forecast_next_interval_arima(grouped, ep, column='avg_response_time')
+        forecast_err = forecast_next_interval_arima(grouped, ep, column='error_rate')
         forecasts.append({
             'endpoint': ep,
             'forecast_avg_response_time_ms': forecast_rt,
             'forecast_error_rate': forecast_err
         })
     forecasts_df = pd.DataFrame(forecasts)
-    print("\n--- Forecasts for Next Interval ---")
+    print("\n--- Advanced Forecasts for Next Interval ---")
     print(forecasts_df)
     
     # -------------------------------------------
-    # Step 7: Visualization (Example for One Endpoint)
+    # Step 8: Visualization (Example for One Endpoint)
     # -------------------------------------------
     selected_ep = endpoints[0]
     ep_data = grouped[grouped['endpoint'] == selected_ep].sort_values('time_bin')
@@ -199,7 +212,6 @@ def main():
     # If a pattern change anomaly was detected for this endpoint, plot the regression line
     pattern_anom_ep = pattern_anomalies[pattern_anomalies['endpoint'] == selected_ep]
     if not pattern_anom_ep.empty:
-        # Perform linear regression on the entire data for the selected endpoint
         x = ep_data['time_bin'].map(lambda t: t.timestamp()).values
         y = ep_data['avg_response_time'].values
         slope, intercept, _, _, _ = linregress(x, y)
