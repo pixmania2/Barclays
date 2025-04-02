@@ -1,0 +1,11 @@
+2025-04-02 14:37:35,089 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 14:37:35,093 INFO  * Running on http://172.20.0.5:5002/ (Press CTRL+C to quit)
+2025-04-02 15:58:14,638 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 15:58:14,647 INFO  * Running on http://172.20.0.7:5002/ (Press CTRL+C to quit)
+2025-04-02 16:03:18,971 INFO {"event": "RESTAURANT_CREATED", "restaurant_id": "f532de7f-ca53-47ba-9c72-f683cf7747c2", "timestamp": "2025-04-02T16:03:18.968558", "service": "restaurant_service"}
+2025-04-02 16:03:18,985 INFO 172.20.0.1 - - [02/Apr/2025 16:03:18] "[35m[1mPOST /api/restaurants HTTP/1.1[0m" 201 -
+2025-04-02 16:03:33,732 INFO 172.20.0.1 - - [02/Apr/2025 16:03:33] "[33mGET /api/restaurants/ec6552fc-135d-4cd0-95d9-088b6ea56b33/menu HTTP/1.1[0m" 404 -
+2025-04-02 16:03:43,175 INFO 172.20.0.1 - - [02/Apr/2025 16:03:43] "GET /api/restaurants/f532de7f-ca53-47ba-9c72-f683cf7747c2/menu HTTP/1.1" 200 -
+2025-04-02 16:07:32,211 INFO 172.20.0.1 - - [02/Apr/2025 16:07:32] "[33mGET /api/restaurants/f532de7f-ca53-47ba-9c72-f683cf7742/menu HTTP/1.1[0m" 404 -

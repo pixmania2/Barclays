@@ -1,0 +1,10 @@
+2025-04-02 14:37:35,139 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 14:37:35,146 INFO  * Running on http://172.20.0.2:5004/ (Press CTRL+C to quit)
+2025-04-02 15:58:14,469 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 15:58:14,474 INFO  * Running on http://172.20.0.5:5004/ (Press CTRL+C to quit)
+2025-04-02 15:58:52,754 INFO {"event": "PAYMENT_CHARGED", "tx_id": "1db1b745-0304-4107-9ec6-0a52365144ad", "order_id": "order123", "amount": 100.5, "status": "CHARGED", "timestamp": "2025-04-02T15:58:52.744890", "service": "payment_service"}
+2025-04-02 15:58:52,807 INFO 172.20.0.1 - - [02/Apr/2025 15:58:52] "[35m[1mPOST /api/payments/charge HTTP/1.1[0m" 201 -
+2025-04-02 16:04:38,681 INFO {"event": "PAYMENT_CHARGED", "tx_id": "f09b0484-52bf-4e23-94e3-feccb007fd20", "order_id": "1486f524-b16c-4052-ac93-5855ba653917", "amount": 19.99, "status": "CHARGED", "timestamp": "2025-04-02T16:04:38.680607", "service": "payment_service"}
+2025-04-02 16:04:38,685 INFO 172.20.0.1 - - [02/Apr/2025 16:04:38] "[35m[1mPOST /api/payments/charge HTTP/1.1[0m" 201 -
