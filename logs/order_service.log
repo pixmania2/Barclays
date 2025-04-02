@@ -1,0 +1,11 @@
+2025-04-02 14:37:35,163 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 14:37:35,169 INFO  * Running on http://172.20.0.6:5003/ (Press CTRL+C to quit)
+2025-04-02 15:58:14,463 WARNING  * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+2025-04-02 15:58:14,474 INFO  * Running on http://172.20.0.4:5003/ (Press CTRL+C to quit)
+2025-04-02 16:03:28,291 INFO {"event": "ORDER_CREATED", "order_id": "74d987c4-325a-471f-8655-007e2617bb84", "user_id": "54700b83-65e4-44ec-8265-a9cdd4888c5b", "restaurant_id": "ec6552fc-135d-4cd0-95d9-088b6ea56b33", "status": "CREATED", "timestamp": "2025-04-02T16:03:28.287163", "service": "order_service"}
+2025-04-02 16:03:28,310 INFO 172.20.0.1 - - [02/Apr/2025 16:03:28] "[35m[1mPOST /api/orders/create HTTP/1.1[0m" 201 -
+2025-04-02 16:03:58,709 INFO 172.20.0.1 - - [02/Apr/2025 16:03:58] "[33mPATCH /api/orders/f532de7f-ca53-47ba-9c72-f683cf7747c2/update_status HTTP/1.1[0m" 404 -
+2025-04-02 16:04:32,427 INFO {"event": "ORDER_UPDATED", "order_id": "74d987c4-325a-471f-8655-007e2617bb84", "user_id": "54700b83-65e4-44ec-8265-a9cdd4888c5b", "restaurant_id": "ec6552fc-135d-4cd0-95d9-088b6ea56b33", "status": "PREPARING", "timestamp": "2025-04-02T16:04:32.426990", "service": "order_service"}
+2025-04-02 16:04:32,428 INFO 172.20.0.1 - - [02/Apr/2025 16:04:32] "PATCH /api/orders/74d987c4-325a-471f-8655-007e2617bb84/update_status HTTP/1.1" 200 -

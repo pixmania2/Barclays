@@ -2,11 +2,23 @@ from flask import Flask, request, jsonify
 import logging
 import uuid
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import os
+import json
 
 app = Flask(__name__)
 notifications = {}
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
+LOG_DIR = "/app/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log_file_path = os.path.join(LOG_DIR, "notification_service.log")
+
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO, handlers=[
+        RotatingFileHandler(log_file_path, maxBytes=1000000, backupCount=3),
+        logging.StreamHandler()  # Optional: keep console logs
+    ]
+)
 
 @app.route('/api/notifications/send', methods=['POST'])
 def send_notification():
@@ -21,7 +33,17 @@ def send_notification():
         "read": False
     }
     notifications[notification_id] = notification
-    app.logger.info(f"NOTIFICATION_SENT: {notification_id} to user {notification['userId']} at {datetime.now().isoformat()}")
+
+    log_entry = {
+        "event": "NOTIFICATION_SENT",
+        "notification_id": notification_id,
+        "user_id": notification["userId"],
+        "type": notification["type"],
+        "timestamp": datetime.now().isoformat(),
+        "service": "notification_service"
+    }
+    app.logger.info(json.dumps(log_entry))
+
     return jsonify({"status": "sent", "notification": notification}), 201
 
 @app.route('/api/notifications/user/<user_id>', methods=['GET'])
@@ -35,14 +57,21 @@ def mark_notification_read(notification_id):
     if not notification:
         return jsonify({"error": "Notification not found"}), 404
     notification["read"] = True
-    app.logger.info(f"NOTIFICATION_READ: {notification_id} at {datetime.now().isoformat()}")
+
+    log_entry = {
+        "event": "NOTIFICATION_READ",
+        "notification_id": notification_id,
+        "timestamp": datetime.now().isoformat(),
+        "service": "notification_service"
+    }
+    app.logger.info(json.dumps(log_entry))
+
     return jsonify({"status": "read", "notification": notification}), 200
 
+# Monitoring & Prometheus
 from time import time
-from flask import request
 from prometheus_client import Counter, Histogram, generate_latest
 
-# Create Prometheus metrics objects
 REQUEST_LATENCY = Histogram(
     'flask_request_duration_seconds', 
     'Flask Request Latency',
@@ -54,38 +83,29 @@ REQUEST_COUNT = Counter(
     ['method', 'endpoint', 'http_status']
 )
 
-# Before each request, record the start time
 @app.before_request
 def start_timer():
     request.start_time = time()
 
-# After each request, record latency and count
 @app.after_request
 def record_metrics(response):
     resp_time = time() - request.start_time
-    # Record the latency for the given method, endpoint, and HTTP status code
     REQUEST_LATENCY.labels(
         method=request.method, 
         endpoint=request.path, 
         http_status=response.status_code
     ).observe(resp_time)
-    
-    # Increment the request counter
     REQUEST_COUNT.labels(
         method=request.method, 
         endpoint=request.path, 
         http_status=response.status_code
     ).inc()
-    
     return response
 
-# Expose a /metrics endpoint for Prometheus to scrape
 @app.route('/metrics')
 def metrics():
     return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
 
-
 if __name__ == '__main__':
     print("Registered routes:", app.url_map)
     app.run(port=5006, host='0.0.0.0')
-

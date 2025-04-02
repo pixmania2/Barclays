@@ -2,11 +2,23 @@ from flask import Flask, request, jsonify
 import logging
 import uuid
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import os
+import json
 
 app = Flask(__name__)
 orders = {}
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
+LOG_DIR = "/app/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log_file_path = os.path.join(LOG_DIR, "order_service.log")
+
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO, handlers=[
+        RotatingFileHandler(log_file_path, maxBytes=1000000, backupCount=3),
+        logging.StreamHandler()  # Optional: keep console logs
+    ]
+)
 
 @app.route('/api/orders/create', methods=['POST'])
 def create_order():
@@ -21,8 +33,16 @@ def create_order():
         "created_at": datetime.now().isoformat()
     }
     orders[order_id] = order_record
-    log_entry = f"{datetime.now().isoformat()},{order_id},{order_record['userId']},{order_record['restaurantId']},CREATED"
-    app.logger.info(log_entry)
+    log_entry = {
+        "event": "ORDER_CREATED",
+        "order_id": order_id,
+        "user_id": order_record['userId'],
+        "restaurant_id": order_record['restaurantId'],
+        "status": "CREATED",
+        "timestamp": datetime.now().isoformat(),
+        "service": "order_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "order_created", "order": order_record}), 201
 
 @app.route('/api/orders/<order_id>', methods=['GET'])
@@ -40,8 +60,16 @@ def update_order_status(order_id):
         return jsonify({"error": "Order not found"}), 404
     new_status = data.get("status", "CREATED")
     order["status"] = new_status
-    log_entry = f"{datetime.now().isoformat()},{order_id},{order['userId']},{order['restaurantId']},{new_status}"
-    app.logger.info(log_entry)
+    log_entry = {
+        "event": "ORDER_UPDATED",
+        "order_id": order_id,
+        "user_id": order['userId'],
+        "restaurant_id": order['restaurantId'],
+        "status": new_status,
+        "timestamp": datetime.now().isoformat(),
+        "service": "order_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "order_updated", "order": order})
 
 @app.route('/api/orders/<order_id>/cancel', methods=['PATCH'])
@@ -50,8 +78,16 @@ def cancel_order(order_id):
     if not order:
         return jsonify({"error": "Order not found"}), 404
     order["status"] = "CANCELLED"
-    log_entry = f"{datetime.now().isoformat()},{order_id},{order['userId']},{order['restaurantId']},CANCELLED"
-    app.logger.info(log_entry)
+    log_entry = {
+        "event": "ORDER_CANCELLED",
+        "order_id": order_id,
+        "user_id": order["userId"],
+        "restaurant_id": order["restaurantId"],
+        "status": "CANCELLED",
+        "timestamp": datetime.now().isoformat(),
+        "service": "order_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "order_cancelled", "order": order}), 200
 
 @app.route('/api/orders/user/<user_id>', methods=['GET'])
@@ -70,15 +106,23 @@ def reorder(order_id):
     new_order["status"] = "CREATED"
     new_order["created_at"] = datetime.now().isoformat()
     orders[new_order_id] = new_order
-    log_entry = f"{datetime.now().isoformat()},{new_order_id},{new_order['userId']},{new_order['restaurantId']},REORDERED"
-    app.logger.info(log_entry)
+    log_entry = {
+        "event": "ORDER_REORDERED",
+        "new_order_id": new_order_id,
+        "user_id": new_order["userId"],
+        "restaurant_id": new_order["restaurantId"],
+        "status": "REORDERED",
+        "timestamp": datetime.now().isoformat(),
+        "service": "order_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "order_created", "order": new_order}), 201
 
+# Prometheus metrics setup
 from time import time
 from flask import request
 from prometheus_client import Counter, Histogram, generate_latest
 
-# Create Prometheus metrics objects
 REQUEST_LATENCY = Histogram(
     'flask_request_duration_seconds', 
     'Flask Request Latency',
@@ -90,37 +134,28 @@ REQUEST_COUNT = Counter(
     ['method', 'endpoint', 'http_status']
 )
 
-# Before each request, record the start time
 @app.before_request
 def start_timer():
     request.start_time = time()
 
-# After each request, record latency and count
 @app.after_request
 def record_metrics(response):
     resp_time = time() - request.start_time
-    # Record the latency for the given method, endpoint, and HTTP status code
     REQUEST_LATENCY.labels(
         method=request.method, 
         endpoint=request.path, 
         http_status=response.status_code
     ).observe(resp_time)
-    
-    # Increment the request counter
     REQUEST_COUNT.labels(
         method=request.method, 
         endpoint=request.path, 
         http_status=response.status_code
     ).inc()
-    
     return response
 
-# Expose a /metrics endpoint for Prometheus to scrape
 @app.route('/metrics')
 def metrics():
     return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
-
-
 
 if __name__ == '__main__':
     print("Registered routes:", app.url_map)

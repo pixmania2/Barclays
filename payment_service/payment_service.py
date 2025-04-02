@@ -1,12 +1,24 @@
 from flask import Flask, request, jsonify
 import logging
 import uuid
+import json
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import os
 
 app = Flask(__name__)
 transactions = {}
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
+LOG_DIR = "/app/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+log_file_path = os.path.join(LOG_DIR, "payment_service.log")
+
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO, handlers=[
+        RotatingFileHandler(log_file_path, maxBytes=1000000, backupCount=3),
+        logging.StreamHandler()  # Optional: keep console logs
+    ]
+)
 
 @app.route('/api/payments/charge', methods=['POST'])
 def charge():
@@ -21,8 +33,16 @@ def charge():
         "status": "CHARGED",
         "timestamp": datetime.now().isoformat()
     }
-    log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | order_id={order_id} | amount={amount} | status=CHARGED"
-    app.logger.info(log_entry)
+    log_entry = {
+    "event": "PAYMENT_CHARGED",
+    "tx_id": transaction_id,
+    "order_id": order_id,
+    "amount": amount,
+    "status": "CHARGED",
+    "timestamp": datetime.now().isoformat(),
+    "service": "payment_service"
+}
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "charged", "transaction_id": transaction_id}), 201
 
 @app.route('/api/payments/refund', methods=['POST'])
@@ -32,8 +52,14 @@ def refund():
     if not transaction_id or transaction_id not in transactions:
         return jsonify({"error": "Transaction not found"}), 404
     transactions[transaction_id]["status"] = "REFUNDED"
-    log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | status=REFUNDED"
-    app.logger.info(log_entry)
+    log_entry = {
+        "event": "PAYMENT_REFUND",
+        "tx_id": transaction_id,
+        "status": "REFUNDED",
+        "timestamp": datetime.now().isoformat(),
+        "service": "payment_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "refunded", "transaction_id": transaction_id}), 200
 
 @app.route('/api/payments/<transaction_id>', methods=['GET'])
@@ -51,8 +77,14 @@ def update_payment_status(transaction_id):
         return jsonify({"error": "Transaction not found"}), 404
     new_status = data.get("status", tx["status"])
     tx["status"] = new_status
-    log_entry = f"PAYMENT_LOG | tx_id={transaction_id} | status={new_status}"
-    app.logger.info(log_entry)
+    log_entry = {
+    "event": "PAYMENT_UPDATED",
+    "tx_id": transaction_id,
+    "status": new_status,
+    "timestamp": datetime.now().isoformat(),
+    "service": "payment_service"
+    }
+    app.logger.info(json.dumps(log_entry))
     return jsonify({"status": "updated", "transaction": tx}), 200
 
 from time import time
