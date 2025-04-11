@@ -6,8 +6,8 @@ services:
     container_name: user_service
     ports:
       - "5001:5001"
-    labels:
-      environment: cloud
+    environment:
+      - ENVIRONMENT=cloud
     volumes:
       - ./logs:/app/logs
 
@@ -17,8 +17,8 @@ services:
     container_name: restaurant_service
     ports:
       - "5002:5002"
-    labels:
-      environment: on-prem
+    environment:
+      - ENVIRONMENT=on-prem
     volumes:
       - ./logs:/app/logs
 
@@ -28,8 +28,8 @@ services:
     container_name: order_service
     ports:
       - "5003:5003"
-    labels:
-      environment: cloud
+    environment:
+      - ENVIRONMENT=cloud
     volumes:
       - ./logs:/app/logs
 
@@ -39,8 +39,8 @@ services:
     container_name: payment_service
     ports:
       - "5004:5004"
-    labels:
-      environment: multi-cloud
+    environment:
+      - ENVIRONMENT=multi-cloud
     volumes:
       - ./logs:/app/logs
 
@@ -50,8 +50,8 @@ services:
     container_name: delivery_service
     ports:
       - "5005:5005"
-    labels:
-      environment: cloud
+    environment:
+      - ENVIRONMENT=cloud
     volumes:
       - ./logs:/app/logs
 
@@ -61,8 +61,8 @@ services:
     container_name: notification_service
     ports:
       - "5006:5006"
-    labels:
-      environment: on-prem
+    environment:
+      - ENVIRONMENT=on-prem
     volumes:
       - ./logs:/app/logs
 
@@ -85,7 +85,7 @@ services:
     ports:
       - "5601:5601"
     environment:
-      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     depends_on:
       - elasticsearch
     networks:
