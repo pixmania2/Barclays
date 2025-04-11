@@ -56,7 +56,7 @@ services = {
     ]
 }
 
-# Define possible environments and log levels
+# Define possible environments, log levels, browsers, and operating systems
 environments = ["on-premises", "cloud", "multi-cloud"]
 log_levels = ["INFO", "WARN", "ERROR"]
 
@@ -68,6 +68,10 @@ error_messages = [
     "Invalid request payload",
     "Authentication failed"
 ]
+
+# List of sample browsers and operating systems
+browsers = ["Chrome", "Firefox", "Edge", "Safari", "Opera"]
+operating_systems = ["Windows", "macOS", "Linux", "Android", "iOS"]
 
 def simulate_log_record(start_time):
     # Randomly pick a service and one of its endpoints
@@ -117,6 +121,14 @@ def simulate_log_record(start_time):
         log_level = random.choice(["INFO", "WARN"])
         error_message = ""
     
+    # Generate Browser with version number
+    browser_choice = random.choice(browsers)
+    browser_version = f"{browser_choice} {random.randint(70, 100)}.{random.randint(0,9)}.{random.randint(0,9)}"
+    
+    # Generate Operating System with version number
+    os_choice = random.choice(operating_systems)
+    os_version = f"{os_choice} {random.randint(10, 15)}.{random.randint(0,9)}"
+    
     return {
         "timestamp": timestamp.isoformat(),
         "service": service,
@@ -133,10 +145,12 @@ def simulate_log_record(start_time):
         "cpu_usage_percent": cpu_usage,
         "memory_usage_mb": memory_usage,
         "log_level": log_level,
-        "error_message": error_message
+        "error_message": error_message,
+        "Browser": browser_version,
+        "Operating System": os_version
     }
 
-# Generate a synthetic dataset with 1000 records
+# Generate a synthetic dataset with 10,000 records
 start_time = datetime.now() - timedelta(days=1)
 records = [simulate_log_record(start_time) for _ in range(10000)]
 df = pd.DataFrame(records)
