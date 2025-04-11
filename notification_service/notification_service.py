@@ -9,6 +9,10 @@ import json
 app = Flask(__name__)
 notifications = {}
 
+# Status code constants
+SUCCESS_STATUSES = [200, 201]
+ERROR_STATUSES = [400, 404, 500, 503]
+
 LOG_DIR = "/app/logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -19,6 +23,21 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
         logging.StreamHandler()  # Optional: keep console logs
     ]
 )
+
+def log_with_status(event, status_code, **kwargs):
+    log_entry = {
+        "event": event,
+        "status_code": status_code,
+        "status_type": "success" if status_code in SUCCESS_STATUSES else "error",
+        "timestamp": datetime.now().isoformat(),
+        "service": "notification_service",
+        **kwargs
+    }
+    if status_code in SUCCESS_STATUSES:
+        app.logger.info(json.dumps(log_entry))
+    else:
+        app.logger.error(json.dumps(log_entry))
+    return log_entry
 
 @app.route('/api/notifications/send', methods=['POST'])
 def send_notification():
@@ -33,39 +52,26 @@ def send_notification():
         "read": False
     }
     notifications[notification_id] = notification
-
-    log_entry = {
-        "event": "NOTIFICATION_SENT",
-        "notification_id": notification_id,
-        "user_id": notification["userId"],
-        "type": notification["type"],
-        "timestamp": datetime.now().isoformat(),
-        "service": "notification_service"
-    }
-    app.logger.info(json.dumps(log_entry))
-
+    log_with_status("NOTIFICATION_SENT", 201, 
+                   notification_id=notification_id,
+                   user_id=notification["userId"],
+                   type=notification["type"])
     return jsonify({"status": "sent", "notification": notification}), 201
 
 @app.route('/api/notifications/user/<user_id>', methods=['GET'])
 def get_notifications(user_id):
     user_notifications = [n for n in notifications.values() if n["userId"] == user_id]
+    log_with_status("NOTIFICATIONS_RETRIEVED", 200, user_id=user_id)
     return jsonify({"userId": user_id, "notifications": user_notifications}), 200
 
 @app.route('/api/notifications/<notification_id>/read', methods=['PATCH'])
 def mark_notification_read(notification_id):
     notification = notifications.get(notification_id)
     if not notification:
+        log_with_status("NOTIFICATION_READ_FAILED", 404, notification_id=notification_id)
         return jsonify({"error": "Notification not found"}), 404
     notification["read"] = True
-
-    log_entry = {
-        "event": "NOTIFICATION_READ",
-        "notification_id": notification_id,
-        "timestamp": datetime.now().isoformat(),
-        "service": "notification_service"
-    }
-    app.logger.info(json.dumps(log_entry))
-
+    log_with_status("NOTIFICATION_READ", 200, notification_id=notification_id)
     return jsonify({"status": "read", "notification": notification}), 200
 
 # Monitoring & Prometheus
@@ -104,6 +110,7 @@ def record_metrics(response):
 
 @app.route('/metrics')
 def metrics():
+    log_with_status("METRICS_ENDPOINT_CALLED", 200)
     return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
 
 if __name__ == '__main__':
