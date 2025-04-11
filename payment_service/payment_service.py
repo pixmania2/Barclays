@@ -9,6 +9,10 @@ import os
 app = Flask(__name__)
 transactions = {}
 
+# Status code constants
+SUCCESS_STATUSES = [200, 201]
+ERROR_STATUSES = [400, 404, 500, 503]
+
 LOG_DIR = "/app/logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -19,6 +23,21 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
         logging.StreamHandler()  # Optional: keep console logs
     ]
 )
+
+def log_with_status(event, status_code, **kwargs):
+    log_entry = {
+        "event": event,
+        "status_code": status_code,
+        "status_type": "success" if status_code in SUCCESS_STATUSES else "error",
+        "timestamp": datetime.now().isoformat(),
+        "service": "payment_service",
+        **kwargs
+    }
+    if status_code in SUCCESS_STATUSES:
+        app.logger.info(json.dumps(log_entry))
+    else:
+        app.logger.error(json.dumps(log_entry))
+    return log_entry
 
 @app.route('/api/payments/charge', methods=['POST'])
 def charge():
@@ -33,16 +52,11 @@ def charge():
         "status": "CHARGED",
         "timestamp": datetime.now().isoformat()
     }
-    log_entry = {
-    "event": "PAYMENT_CHARGED",
-    "tx_id": transaction_id,
-    "order_id": order_id,
-    "amount": amount,
-    "status": "CHARGED",
-    "timestamp": datetime.now().isoformat(),
-    "service": "payment_service"
-}
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("PAYMENT_CHARGED", 201, 
+                   tx_id=transaction_id,
+                   order_id=order_id,
+                   amount=amount,
+                   status="CHARGED")
     return jsonify({"status": "charged", "transaction_id": transaction_id}), 201
 
 @app.route('/api/payments/refund', methods=['POST'])
@@ -50,23 +64,23 @@ def refund():
     data = request.json or {}
     transaction_id = data.get("transactionId")
     if not transaction_id or transaction_id not in transactions:
+        log_with_status("REFUND_FAILED", 404, tx_id=transaction_id)
         return jsonify({"error": "Transaction not found"}), 404
     transactions[transaction_id]["status"] = "REFUNDED"
-    log_entry = {
-        "event": "PAYMENT_REFUND",
-        "tx_id": transaction_id,
-        "status": "REFUNDED",
-        "timestamp": datetime.now().isoformat(),
-        "service": "payment_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("PAYMENT_REFUND", 200, 
+                   tx_id=transaction_id,
+                   status="REFUNDED")
     return jsonify({"status": "refunded", "transaction_id": transaction_id}), 200
 
 @app.route('/api/payments/<transaction_id>', methods=['GET'])
 def get_transaction(transaction_id):
     tx = transactions.get(transaction_id)
     if not tx:
+        log_with_status("TRANSACTION_NOT_FOUND", 404, tx_id=transaction_id)
         return jsonify({"error": "Transaction not found"}), 404
+    log_with_status("TRANSACTION_RETRIEVED", 200, 
+                   tx_id=transaction_id,
+                   status=tx["status"])
     return jsonify(tx)
 
 @app.route('/api/payments/<transaction_id>/update_status', methods=['PATCH'])
@@ -74,17 +88,13 @@ def update_payment_status(transaction_id):
     data = request.json or {}
     tx = transactions.get(transaction_id)
     if not tx:
+        log_with_status("PAYMENT_UPDATE_FAILED", 404, tx_id=transaction_id)
         return jsonify({"error": "Transaction not found"}), 404
     new_status = data.get("status", tx["status"])
     tx["status"] = new_status
-    log_entry = {
-    "event": "PAYMENT_UPDATED",
-    "tx_id": transaction_id,
-    "status": new_status,
-    "timestamp": datetime.now().isoformat(),
-    "service": "payment_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("PAYMENT_UPDATED", 200, 
+                   tx_id=transaction_id,
+                   status=new_status)
     return jsonify({"status": "updated", "transaction": tx}), 200
 
 from time import time
@@ -131,10 +141,9 @@ def record_metrics(response):
 # Expose a /metrics endpoint for Prometheus to scrape
 @app.route('/metrics')
 def metrics():
+    log_with_status("METRICS_ENDPOINT_CALLED", 200)
     return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
 
-
-    
 if __name__ == '__main__':
     print("Registered routes:", app.url_map)
     app.run(port=5004, host='0.0.0.0')

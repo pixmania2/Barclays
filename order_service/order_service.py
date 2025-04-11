@@ -9,6 +9,10 @@ import json
 app = Flask(__name__)
 orders = {}
 
+# Status code constants
+SUCCESS_STATUSES = [200, 201]
+ERROR_STATUSES = [400, 404, 500, 503]
+
 LOG_DIR = "/app/logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -19,6 +23,21 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
         logging.StreamHandler()  # Optional: keep console logs
     ]
 )
+
+def log_with_status(event, status_code, **kwargs):
+    log_entry = {
+        "event": event,
+        "status_code": status_code,
+        "status_type": "success" if status_code in SUCCESS_STATUSES else "error",
+        "timestamp": datetime.now().isoformat(),
+        "service": "order_service",
+        **kwargs
+    }
+    if status_code in SUCCESS_STATUSES:
+        app.logger.info(json.dumps(log_entry))
+    else:
+        app.logger.error(json.dumps(log_entry))
+    return log_entry
 
 @app.route('/api/orders/create', methods=['POST'])
 def create_order():
@@ -33,23 +52,23 @@ def create_order():
         "created_at": datetime.now().isoformat()
     }
     orders[order_id] = order_record
-    log_entry = {
-        "event": "ORDER_CREATED",
-        "order_id": order_id,
-        "user_id": order_record['userId'],
-        "restaurant_id": order_record['restaurantId'],
-        "status": "CREATED",
-        "timestamp": datetime.now().isoformat(),
-        "service": "order_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("ORDER_CREATED", 201, 
+                   order_id=order_id,
+                   user_id=order_record['userId'],
+                   restaurant_id=order_record['restaurantId'],
+                   status="CREATED")
     return jsonify({"status": "order_created", "order": order_record}), 201
 
 @app.route('/api/orders/<order_id>', methods=['GET'])
 def get_order(order_id):
     order = orders.get(order_id)
     if not order:
+        log_with_status("ORDER_NOT_FOUND", 404, order_id=order_id)
         return jsonify({"error": "Order not found"}), 404
+    log_with_status("ORDER_RETRIEVED", 200, 
+                   order_id=order_id,
+                   user_id=order['userId'],
+                   restaurant_id=order['restaurantId'])
     return jsonify(order)
 
 @app.route('/api/orders/<order_id>/update_status', methods=['PATCH'])
@@ -57,48 +76,42 @@ def update_order_status(order_id):
     data = request.json or {}
     order = orders.get(order_id)
     if not order:
+        log_with_status("ORDER_UPDATE_FAILED", 404, order_id=order_id)
         return jsonify({"error": "Order not found"}), 404
     new_status = data.get("status", "CREATED")
     order["status"] = new_status
-    log_entry = {
-        "event": "ORDER_UPDATED",
-        "order_id": order_id,
-        "user_id": order['userId'],
-        "restaurant_id": order['restaurantId'],
-        "status": new_status,
-        "timestamp": datetime.now().isoformat(),
-        "service": "order_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("ORDER_UPDATED", 200, 
+                   order_id=order_id,
+                   user_id=order['userId'],
+                   restaurant_id=order['restaurantId'],
+                   status=new_status)
     return jsonify({"status": "order_updated", "order": order})
 
 @app.route('/api/orders/<order_id>/cancel', methods=['PATCH'])
 def cancel_order(order_id):
     order = orders.get(order_id)
     if not order:
+        log_with_status("ORDER_CANCEL_FAILED", 404, order_id=order_id)
         return jsonify({"error": "Order not found"}), 404
     order["status"] = "CANCELLED"
-    log_entry = {
-        "event": "ORDER_CANCELLED",
-        "order_id": order_id,
-        "user_id": order["userId"],
-        "restaurant_id": order["restaurantId"],
-        "status": "CANCELLED",
-        "timestamp": datetime.now().isoformat(),
-        "service": "order_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("ORDER_CANCELLED", 200, 
+                   order_id=order_id,
+                   user_id=order["userId"],
+                   restaurant_id=order["restaurantId"],
+                   status="CANCELLED")
     return jsonify({"status": "order_cancelled", "order": order}), 200
 
 @app.route('/api/orders/user/<user_id>', methods=['GET'])
 def get_orders_by_user(user_id):
     user_orders = [order for order in orders.values() if order.get("userId") == user_id]
+    log_with_status("USER_ORDERS_RETRIEVED", 200, user_id=user_id)
     return jsonify({"user_id": user_id, "orders": user_orders}), 200
 
 @app.route('/api/orders/<order_id>/reorder', methods=['POST'])
 def reorder(order_id):
     original_order = orders.get(order_id)
     if not original_order:
+        log_with_status("REORDER_FAILED", 404, order_id=order_id)
         return jsonify({"error": "Original order not found"}), 404
     new_order_id = str(uuid.uuid4())
     new_order = original_order.copy()
@@ -106,16 +119,11 @@ def reorder(order_id):
     new_order["status"] = "CREATED"
     new_order["created_at"] = datetime.now().isoformat()
     orders[new_order_id] = new_order
-    log_entry = {
-        "event": "ORDER_REORDERED",
-        "new_order_id": new_order_id,
-        "user_id": new_order["userId"],
-        "restaurant_id": new_order["restaurantId"],
-        "status": "REORDERED",
-        "timestamp": datetime.now().isoformat(),
-        "service": "order_service"
-    }
-    app.logger.info(json.dumps(log_entry))
+    log_with_status("ORDER_REORDERED", 201, 
+                   new_order_id=new_order_id,
+                   user_id=new_order["userId"],
+                   restaurant_id=new_order["restaurantId"],
+                   status="REORDERED")
     return jsonify({"status": "order_created", "order": new_order}), 201
 
 # Prometheus metrics setup
@@ -155,6 +163,7 @@ def record_metrics(response):
 
 @app.route('/metrics')
 def metrics():
+    log_with_status("METRICS_ENDPOINT_CALLED", 200)
     return generate_latest(), 200, {'Content-Type': 'text/plain; version=0.0.4; charset=utf-8'}
 
 if __name__ == '__main__':
