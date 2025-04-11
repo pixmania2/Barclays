@@ -2,31 +2,74 @@ import React, { useState } from "react";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 
-export function PaymentServicePanel({ log }) {
+export function PaymentServicePanel({
+  log,
+  fireCount = 1,
+  delay = 0,
+  errorRate = 0,
+}) {
   const [txId, setTxId] = useState("");
   const [orderId] = useState(uuidv4());
-  const [bulkCount, setBulkCount] = useState(1);
 
   const baseUrl = "http://localhost:5004/api/payments";
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+  const shouldError = () => Math.random() * 100 < errorRate;
 
-  const send = async (method, url, body = null, label = "") => {
-    try {
-      const res = await axios({ method, url, data: body });
-      log(`${label} ✅ (${res.status}): ${url}`);
-      if (label.includes("Charge")) setTxId(res.data.transaction_id);
-    } catch (err) {
-      log(`${label} ❌ (${err.response?.status || "ERR"}): ${url}`);
+  const fire = async (method, url, label, dataFn) => {
+    for (let i = 0; i < fireCount; i++) {
+      let finalUrl = url;
+      let payload = dataFn();
+      const isError = shouldError();
+
+      if (isError) {
+        label = `⚠️ ${label}`;
+        if (Math.random() < 0.5) {
+          finalUrl = `${baseUrl}/invalid`; // unexpected endpoint
+        } else {
+          payload = { invalid: "broken" }; // expected bad input
+        }
+      }
+
+      try {
+        const res = await axios({ method, url: finalUrl, data: payload });
+        log(`${label} ✅ (${res.status}): ${finalUrl}`);
+        if (label.includes("Charge") && res.data.transaction_id) {
+          setTxId(res.data.transaction_id);
+        }
+      } catch (err) {
+        log(`${label} ❌ (${err.response?.status || "ERR"}): ${finalUrl}`);
+      }
+      if (delay > 0) await sleep(delay);
     }
   };
 
-  const chargePayload = () => ({
-    orderId,
-    amount: parseFloat((Math.random() * 100 + 10).toFixed(2)),
-  });
+  const handleRandom = async () => {
+    const options = [
+      () =>
+        fire("post", `${baseUrl}/charge`, "Charge", () => ({
+          orderId,
+          amount: parseFloat((Math.random() * 100 + 10).toFixed(2)),
+        })),
+      () =>
+        fire("post", `${baseUrl}/refund`, "Refund", () => ({
+          transactionId: txId,
+        })),
+      () => fire("get", `${baseUrl}/${txId}`, "Get Transaction", () => null),
+      () =>
+        fire(
+          "patch",
+          `${baseUrl}/${txId}/update_status`,
+          "Update Status",
+          () => ({
+            status: "FAILED",
+          })
+        ),
+    ];
 
-  const bulkCharge = async () => {
-    for (let i = 0; i < bulkCount; i++) {
-      await send("post", `${baseUrl}/charge`, chargePayload(), "Charge");
+    for (let i = 0; i < fireCount; i++) {
+      const fn = options[Math.floor(Math.random() * options.length)];
+      await fn();
+      if (delay > 0) await sleep(delay);
     }
   };
 
@@ -40,7 +83,10 @@ export function PaymentServicePanel({ log }) {
         <button
           className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
           onClick={() =>
-            send("post", `${baseUrl}/charge`, chargePayload(), "Charge")
+            fire("post", `${baseUrl}/charge`, "Charge", () => ({
+              orderId,
+              amount: parseFloat((Math.random() * 100 + 10).toFixed(2)),
+            }))
           }
         >
           Charge
@@ -48,7 +94,9 @@ export function PaymentServicePanel({ log }) {
         <button
           className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
           onClick={() =>
-            send("post", `${baseUrl}/refund`, { transactionId: txId }, "Refund")
+            fire("post", `${baseUrl}/refund`, "Refund", () => ({
+              transactionId: txId,
+            }))
           }
           disabled={!txId}
         >
@@ -57,7 +105,7 @@ export function PaymentServicePanel({ log }) {
         <button
           className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
           onClick={() =>
-            send("get", `${baseUrl}/${txId}`, null, "Get Transaction")
+            fire("get", `${baseUrl}/${txId}`, "Get Transaction", () => null)
           }
           disabled={!txId}
         >
@@ -66,36 +114,25 @@ export function PaymentServicePanel({ log }) {
         <button
           className="bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600"
           onClick={() =>
-            send(
+            fire(
               "patch",
               `${baseUrl}/${txId}/update_status`,
-              { status: "FAILED" },
-              "Update Status"
+              "Update Status",
+              () => ({
+                status: "FAILED",
+              })
             )
           }
           disabled={!txId}
         >
           Update Status
         </button>
-      </div>
-
-      <div className="my-2">
-        <label className="text-sm font-medium">Bulk Charge:</label>
-        <div className="flex items-center gap-2 mt-1">
-          <input
-            type="number"
-            className="border p-1 w-16 text-sm rounded"
-            value={bulkCount}
-            min={1}
-            onChange={(e) => setBulkCount(Number(e.target.value))}
-          />
-          <button
-            className="bg-gray-800 text-white text-sm px-2 py-1 rounded hover:bg-gray-700"
-            onClick={bulkCharge}
-          >
-            Fire Charge x {bulkCount}
-          </button>
-        </div>
+        <button
+          className="bg-black text-white px-3 py-1 rounded"
+          onClick={handleRandom}
+        >
+          🎲 Random
+        </button>
       </div>
     </div>
   );

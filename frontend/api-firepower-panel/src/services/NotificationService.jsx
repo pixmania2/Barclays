@@ -2,32 +2,70 @@ import React, { useState } from "react";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 
-export function NotificationServicePanel({ log }) {
+export function NotificationServicePanel({
+  log,
+  fireCount = 1,
+  delay = 0,
+  errorRate = 0,
+}) {
   const [userId] = useState(uuidv4());
   const [notificationId, setNotificationId] = useState("");
-  const [bulkCount, setBulkCount] = useState(1);
 
   const baseUrl = "http://localhost:5006/api/notifications";
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+  const shouldError = () => Math.random() * 100 < errorRate;
 
-  const send = async (method, url, body = null, label = "") => {
-    try {
-      const res = await axios({ method, url, data: body });
-      log(`${label} ✅ (${res.status}): ${url}`);
-      if (label.includes("Send")) setNotificationId(res.data.notification.id);
-    } catch (err) {
-      log(`${label} ❌ (${err.response?.status || "ERR"}): ${url}`);
+  const fire = async (method, url, label, dataFn) => {
+    for (let i = 0; i < fireCount; i++) {
+      let finalUrl = url;
+      let payload = dataFn();
+      const isError = shouldError();
+
+      if (isError) {
+        label = `⚠️ ${label}`;
+        if (Math.random() < 0.5) {
+          finalUrl = `${baseUrl}/oops-${uuidv4().slice(0, 4)}`; // broken endpoint
+        } else {
+          payload = { invalid: true }; // malformed
+        }
+      }
+
+      try {
+        const res = await axios({ method, url: finalUrl, data: payload });
+        log(`${label} ✅ (${res.status}): ${finalUrl}`);
+        if (label.includes("Send") && res.data.notification?.id) {
+          setNotificationId(res.data.notification.id);
+        }
+      } catch (err) {
+        log(`${label} ❌ (${err.response?.status || "ERR"}): ${finalUrl}`);
+      }
+
+      if (delay > 0) await sleep(delay);
     }
   };
 
-  const createNotification = () => ({
-    userId,
-    message: "🚀 New order update: " + uuidv4().slice(0, 4),
-    type: "info",
-  });
+  const handleRandom = async () => {
+    const options = [
+      () =>
+        fire("post", `${baseUrl}/send`, "Send", () => ({
+          userId,
+          message: "🚀 New update " + uuidv4().slice(0, 4),
+          type: "info",
+        })),
+      () => fire("get", `${baseUrl}/user/${userId}`, "Get by User", () => null),
+      () =>
+        fire(
+          "patch",
+          `${baseUrl}/${notificationId}/read`,
+          "Mark Read",
+          () => null
+        ),
+    ];
 
-  const bulkSend = async () => {
-    for (let i = 0; i < bulkCount; i++) {
-      await send("post", `${baseUrl}/send`, createNotification(), "Send");
+    for (let i = 0; i < fireCount; i++) {
+      const fn = options[Math.floor(Math.random() * options.length)];
+      await fn();
+      if (delay > 0) await sleep(delay);
     }
   };
 
@@ -39,59 +77,50 @@ export function NotificationServicePanel({ log }) {
 
       <div className="space-y-2">
         <button
-          className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+          className="bg-blue-500 text-white px-3 py-1 rounded"
           onClick={() =>
-            send(
-              "post",
-              `${baseUrl}/send`,
-              createNotification(),
-              "Send Notification"
-            )
+            fire("post", `${baseUrl}/send`, "Send Notification", () => ({
+              userId,
+              message: "New message " + uuidv4().slice(0, 4),
+              type: "info",
+            }))
           }
         >
           Send Notification
         </button>
         <button
-          className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+          className="bg-green-500 text-white px-3 py-1 rounded"
           onClick={() =>
-            send("get", `${baseUrl}/user/${userId}`, null, "Get Notifications")
+            fire(
+              "get",
+              `${baseUrl}/user/${userId}`,
+              "Get Notifications",
+              () => null
+            )
           }
         >
           Get Notifications by User
         </button>
         <button
-          className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+          className="bg-yellow-500 text-white px-3 py-1 rounded"
           onClick={() =>
-            send(
+            fire(
               "patch",
               `${baseUrl}/${notificationId}/read`,
-              null,
-              "Mark as Read"
+              "Mark as Read",
+              () => null
             )
           }
           disabled={!notificationId}
         >
           Mark as Read
         </button>
-      </div>
-
-      <div className="my-2">
-        <label className="text-sm font-medium">Bulk Send:</label>
-        <div className="flex items-center gap-2 mt-1">
-          <input
-            type="number"
-            className="border p-1 w-16 text-sm rounded"
-            value={bulkCount}
-            min={1}
-            onChange={(e) => setBulkCount(Number(e.target.value))}
-          />
-          <button
-            className="bg-gray-800 text-white text-sm px-2 py-1 rounded hover:bg-gray-700"
-            onClick={bulkSend}
-          >
-            Fire Send x {bulkCount}
-          </button>
-        </div>
+        <button
+          className="bg-black text-white px-3 py-1 rounded"
+          onClick={handleRandom}
+        >
+          🎲 Random
+        </button>
       </div>
     </div>
   );
