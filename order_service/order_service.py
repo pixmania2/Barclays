@@ -5,8 +5,10 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import os
 import json
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 orders = {}
 
 # Status code constants
