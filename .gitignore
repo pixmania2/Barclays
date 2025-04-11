@@ -1,0 +1,7 @@
+logs/*
+logs/user_service.log
+logs/restaurant_service.log
+logs/payment_service.log
+logs/order_service.log
+logs/notification_service.log
+logs/delivery_service.log
