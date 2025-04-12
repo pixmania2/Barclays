@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
+import json
+import os
 
 # Import functions from your main model file, kuch.py
 from kuch import (
@@ -39,16 +41,17 @@ if st.sidebar.button("Load Data"):
         st.session_state.df = df
         st.session_state.grouped = grouped
 
-st.write("### Data Preview")
-st.dataframe(st.session_state.df.head())
-
-# Ensure data is loaded
+# Ensure data is loaded BEFORE using session_state values.
 if "df" not in st.session_state or "grouped" not in st.session_state:
     st.warning("Please load data first in the sidebar.")
     st.stop()
 
 df = st.session_state.df
 grouped = st.session_state.grouped
+
+# --- Data Preview ---
+st.write("### Data Preview")
+st.dataframe(df.head())
 
 # --- 1. Anomaly Detection Section ---
 st.header("Anomaly Detection Results")
@@ -57,12 +60,12 @@ st.header("Anomaly Detection Results")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("Response Time Pattern Changes (Demo)")
+    st.subheader("Response Time Pattern Changes")
     rt_pattern_anomalies = detect_response_time_pattern_change_demo(grouped, slope_threshold=1.25)
     st.dataframe(rt_pattern_anomalies)
 
 with col2:
-    st.subheader("Error Rate Anomalies (Demo)")
+    st.subheader("Error Rate Anomalies")
     error_rate_anomalies = detect_error_rate_anomalies_demo(grouped, error_threshold=0.9)
     st.dataframe(error_rate_anomalies)
 
@@ -163,3 +166,20 @@ if not forecasts_df.empty:
         ax2.set_title(f"Forecast for Avg Response Time - {env} - {endpoint}")
         ax2.legend()
         st.pyplot(fig2)
+        
+# --- 6. Anomaly Alerts Section ---
+st.header("Anomaly Alerts")
+alerts_file = "alerts.json"
+if os.path.exists(alerts_file):
+    try:
+        with open(alerts_file, "r") as f:
+            alerts = json.load(f)
+        if alerts:
+            alerts_df = pd.DataFrame(alerts)
+            st.dataframe(alerts_df)
+        else:
+            st.write("No alerts available.")
+    except Exception as e:
+        st.error(f"Error loading alerts: {e}")
+else:
+    st.write("Alerts file not found. Please ensure anomaly alerts have been generated.")

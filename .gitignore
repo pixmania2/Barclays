@@ -7,3 +7,4 @@
 /logs/delivery_service.log
 /venv/
 /__pycache__/
+/Automated/.env

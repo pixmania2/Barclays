@@ -49,7 +49,8 @@ def compute_hybrid_threshold(df, window_minutes, condition_func, ev_target_quant
     # Reshape for clustering
     X = metric_values.reshape(-1, 1)
     kmeans = KMeans(n_clusters=2, random_state=42).fit(X)
-    labels = kmeans.labels_
+    labels = kme
+    ans.labels_
     centers = kmeans.cluster_centers_.flatten()
     normal_cluster_label = np.argmin(centers)
     normal_values = metric_values[labels == normal_cluster_label]
@@ -359,14 +360,7 @@ def visualize_journey_forecast(journey_group, forecast_value, interval_minutes=1
 # ALERTS LOGGING FUNCTION
 #############################
 def write_alerts_to_json(alerts, filename):
-    """
-    Write a list of alert dictionaries to a JSON file.
-    
-    Each alert should have:
-    - "timestamp": timestamp of the alert in ISO format,
-    - "Priority": the severity (e.g., Critical, High, Moderate, Low, Planning),
-    - "description": a description message.
-    """
+
     with open(filename, "w") as f:
         json.dump(alerts, f, indent=4)
     print(f"Alerts written to {filename}")
@@ -416,6 +410,16 @@ def main():
     
     # Write alerts to a JSON file
     write_alerts_to_json(alerts, "alerts.json")
+    
+    # ---------------------------------------------------
+    # Create ServiceNow incidents and send Slack notifications
+    # ---------------------------------------------------
+    try:
+        from incident_manager import IncidentManager
+        manager = IncidentManager()
+        manager.process_alerts("alerts.json")
+    except Exception as e:
+        print(f"Error processing alerts with incident manager: {str(e)}")
     
     # ---------------------------------------------------
     # 2. Spike Detection (still dynamic)
