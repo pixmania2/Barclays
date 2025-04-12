@@ -5,3 +5,5 @@
 /logs/order_service.log
 /logs/notification_service.log
 /logs/delivery_service.log
+/venv/*
+/_pycache__/*
