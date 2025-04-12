@@ -159,9 +159,7 @@ def detect_response_time_pattern_change_demo(grouped, slope_threshold=5.0):
         x = group['time_bin'].map(lambda t: t.timestamp()).values
         y = group['avg_response_time'].values
         slope, intercept, r_value, p_value, std_err = linregress(x, y)
-
-        # Multiply slope by 900 to convert it to "ms per 15-min interval" 
-        slope_per_interval = slope * 900
+        slope_per_interval = slope * 900  # Convert to ms per 15-min interval
         
         if slope_per_interval > slope_threshold:
             anomaly = group.iloc[-1].copy()
@@ -184,7 +182,7 @@ def detect_error_rate_anomalies_demo(grouped, error_threshold=1.25):
     FOR DEMO: Detect an error rate anomaly whenever error_rate > error_threshold.
     This ensures anomalies will appear if your error_rate crosses this fixed limit.
     
-    error_threshold: a fixed fraction of errors (e.g. 0.1 = 10% error rate).
+    error_threshold: a fixed fraction of errors.
     """
     anomalies_list = []
     for (env, endpoint), group in grouped.groupby(['environment', 'endpoint']):
@@ -209,7 +207,7 @@ def detect_response_time_spike_anomalies(grouped):
     """
     anomalies_list = []
     for (env, endpoint), group in grouped.groupby(['environment', 'endpoint']):
-        dynamic_threshold = compute_hybrid_avg_threshold(group, 15, avg_response_time, 0.99)
+        dynamic_threshold = compute_hybrid_avg_threshold(group, 15, avg_response_time, 0.90)
         anomaly_mask = group['avg_response_time'] > dynamic_threshold
         anomalies = group[anomaly_mask].copy()
         if not anomalies.empty:
@@ -240,7 +238,7 @@ def analyze_request_journeys(df):
         100 * journey_group['total_errors'] +
         50 * (journey_group['distinct_environments'] - 1)
     )
-    risk_threshold = np.percentile(journey_group['risk_score'], 99)
+    risk_threshold = np.percentile(journey_group['risk_score'], 90)
     journey_group['is_anomalous'] = journey_group['risk_score'] > risk_threshold
     journey_group['dynamic_risk_threshold'] = risk_threshold
     return journey_group
@@ -283,53 +281,57 @@ def forecast_next_interval_prophet(grouped, env, endpoint, column='avg_response_
          return None
 
 #############################
-# VISUALIZATION FUNCTIONS FOR FORECASTS
+# MODIFIED VISUALIZATION FUNCTIONS TO DISPLAY ONLY ONE GRAPH PER TYPE
 #############################
-def visualize_group_forecast(grouped, forecasts_df, metric='avg_response_time', interval_minutes=15):
+def visualize_sample_group_forecast(grouped, forecasts_df, metric='avg_response_time', interval_minutes=15, sample_index=0):
     """
-    Visualizes forecasts for each (environment, endpoint) group.
+    Visualizes forecast for one (environment, endpoint) sample taken from forecasts_df.
     
     Parameters:
         grouped: The preprocessed grouped DataFrame with historical data.
         forecasts_df: A DataFrame containing forecast values for each group.
-                      Expected columns: 'environment', 'endpoint', and 
-                      'forecast_avg_response_time_ms' or 'forecast_error_rate'.
         metric: The metric to visualize ('avg_response_time' or 'error_rate').
         interval_minutes: The time interval (in minutes) used for each time bin.
+        sample_index: Index of the sample in forecasts_df to plot.
     """
     forecast_col = f'forecast_{metric}_ms' if metric == 'avg_response_time' else f'forecast_{metric}'
     
-    for idx, row in forecasts_df.iterrows():
-        env = row['environment']
-        endpoint = row['endpoint']
-        forecast_value = row[forecast_col]
-        
-        # Filter historical data for this group.
-        group_data = grouped[(grouped['environment'] == env) & (grouped['endpoint'] == endpoint)].sort_values('time_bin')
-        if group_data.empty:
-            continue
+    if forecasts_df.empty or sample_index >= len(forecasts_df):
+        print("No forecast data available for visualization.")
+        return
+    
+    # Select a single sample forecast row
+    row = forecasts_df.iloc[sample_index]
+    env = row['environment']
+    endpoint = row['endpoint']
+    forecast_value = row[forecast_col]
+    
+    # Filter historical data for the chosen sample.
+    group_data = grouped[(grouped['environment'] == env) & (grouped['endpoint'] == endpoint)].sort_values('time_bin')
+    if group_data.empty:
+        print("No historical data available for the selected sample.")
+        return
 
-        # Create a new time point for the forecast interval.
-        last_time = group_data['time_bin'].max()
-        forecast_time = last_time + pd.Timedelta(minutes=interval_minutes)
+    last_time = group_data['time_bin'].max()
+    forecast_time = last_time + pd.Timedelta(minutes=interval_minutes)
 
-        plt.figure(figsize=(12, 6))
-        plt.plot(group_data['time_bin'], group_data[metric], marker='o', label='Historical Data')
-        plt.plot([last_time, forecast_time], [forecast_value, forecast_value], linestyle='--', color='green', linewidth=2, label='Forecast')
-        plt.scatter(forecast_time, forecast_value, color='green', marker='x', s=100)
-        
-        plt.xlabel('Time')
-        ylabel = "Avg Response Time (ms)" if metric == 'avg_response_time' else "Error Rate"
-        plt.ylabel(ylabel)
-        plt.title(f"{ylabel} Forecast for {env} - {endpoint}")
-        plt.legend()
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
+    plt.figure(figsize=(12, 6))
+    plt.plot(group_data['time_bin'], group_data[metric], marker='o', label='Historical Data')
+    plt.plot([last_time, forecast_time], [forecast_value, forecast_value], linestyle='--', color='green', linewidth=2, label='Forecast')
+    plt.scatter(forecast_time, forecast_value, color='green', marker='x', s=100)
+    
+    plt.xlabel('Time')
+    ylabel = "Avg Response Time (ms)" if metric == 'avg_response_time' else "Error Rate"
+    plt.ylabel(ylabel)
+    plt.title(f"{ylabel} Forecast for {env} - {endpoint}")
+    plt.legend()
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
 def visualize_journey_forecast(journey_group, forecast_value, interval_minutes=15):
     """
-    Visualizes the forecast of anomalous journey counts.
+    Visualizes the forecast of anomalous journey counts as a single graph.
     
     Parameters:
         journey_group: DataFrame containing aggregated journey analysis.
@@ -369,7 +371,7 @@ def main():
     # ---------------------------------------------------
     # 1. FORCED Anomaly Detection to Guarantee Some Logs
     # ---------------------------------------------------
-    # Set these thresholds so that some points become anomalies in your data.
+    # Set thresholds so that some points become anomalies in your data.
     rt_pattern_anomalies = detect_response_time_pattern_change_demo(grouped, slope_threshold=2.0)
     error_rate_anomalies = detect_error_rate_anomalies_demo(grouped, error_threshold=1.25)
     
@@ -391,7 +393,6 @@ def main():
     journey_group = analyze_request_journeys(df)
     journey_forecast = forecast_journey_anomalies(journey_group, time_interval='15min')
     
-    # Just printing a couple of lines for verification
     print("\n--- Request Journey Analysis ---")
     print(journey_group.head(10))
     if journey_forecast is not None:
@@ -420,17 +421,19 @@ def main():
     print(forecasts_df)
     
     # ---------------------------------------------------
-    # 5. Visualization for Forecasts
+    # 5. Visualization for Forecasts (One graph per type)
     # ---------------------------------------------------
-    visualize_group_forecast(grouped, forecasts_df, metric='avg_response_time', interval_minutes=15)
-    visualize_group_forecast(grouped, forecasts_df, metric='error_rate', interval_minutes=15)
+    # Visualize one sample forecast for average response time.
+    visualize_sample_group_forecast(grouped, forecasts_df, metric='avg_response_time', interval_minutes=15, sample_index=0)
+    # Visualize one sample forecast for error rate.
+    visualize_sample_group_forecast(grouped, forecasts_df, metric='error_rate', interval_minutes=15, sample_index=0)
+    # Visualize journey forecast as a single graph.
     if journey_forecast is not None:
         visualize_journey_forecast(journey_group, forecast_value=journey_forecast, interval_minutes=15)
     
     # ---------------------------------------------------
-    # 6. Visualization of Historical Data & Demo Anomalies
+    # 6. Visualization of Historical Data & Demo Anomalies (One graph)
     # ---------------------------------------------------
-    # Plot the first (environment, endpoint) as a sample.
     if not unique_groups.empty:
         sample_group = unique_groups.iloc[0]
         env = sample_group['environment']
@@ -440,14 +443,14 @@ def main():
         plt.figure(figsize=(12, 6))
         plt.plot(group_data['time_bin'], group_data['avg_response_time'], marker='o', label='Avg Response Time (ms)', color='steelblue')
         
-        # Mark forced pattern change anomalies
+        # Mark forced pattern change anomalies for the sample.
         anomalies_pattern = rt_pattern_anomalies[(rt_pattern_anomalies['environment'] == env) &
-                                                (rt_pattern_anomalies['endpoint'] == endpoint)]
+                                                 (rt_pattern_anomalies['endpoint'] == endpoint)]
         if not anomalies_pattern.empty:
             plt.scatter(anomalies_pattern['time_bin'], anomalies_pattern['avg_response_time'],
                         color='red', label='Pattern Anomaly (Demo)')
         
-        # Mark dynamic spike anomalies
+        # Mark dynamic spike anomalies for the sample.
         anomalies_spike = rt_spike_anomalies[(rt_spike_anomalies['environment'] == env) & 
                                              (rt_spike_anomalies['endpoint'] == endpoint)]
         if not anomalies_spike.empty:
@@ -456,7 +459,7 @@ def main():
         
         plt.xlabel('Time')
         plt.ylabel('Avg Response Time (ms)')
-        plt.title("API Response Time Trend with Anomalies (Demo + Dynamic)")
+        plt.title("API Response Time Trend with Demo & Dynamic Anomalies")
         plt.legend()
         plt.xticks(rotation=45)
         plt.tight_layout()
