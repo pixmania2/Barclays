@@ -6,6 +6,7 @@ from scipy.stats import linregress, genpareto
 from prophet import Prophet
 from sklearn.cluster import KMeans
 import warnings
+import json  # Imported to write alerts to JSON file
 
 # Suppress warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -163,7 +164,7 @@ def detect_response_time_pattern_change_demo(grouped, slope_threshold=5.0):
         
         if slope_per_interval > slope_threshold:
             anomaly = group.iloc[-1].copy()
-            anomaly['anomaly_type'] = 'Pattern Change (Demo Threshold)'
+            anomaly['anomaly_type'] = 'Pattern Change'
             anomaly['slope_per_interval'] = slope_per_interval
             anomaly['demo_slope_threshold'] = slope_threshold
             anomaly['p_value'] = p_value
@@ -178,18 +179,12 @@ def detect_response_time_pattern_change_demo(grouped, slope_threshold=5.0):
         ])
 
 def detect_error_rate_anomalies_demo(grouped, error_threshold=1.25):
-    """
-    FOR DEMO: Detect an error rate anomaly whenever error_rate > error_threshold.
-    This ensures anomalies will appear if your error_rate crosses this fixed limit.
-    
-    error_threshold: a fixed fraction of errors.
-    """
     anomalies_list = []
     for (env, endpoint), group in grouped.groupby(['environment', 'endpoint']):
         anomaly_mask = group['error_rate'] > error_threshold
         anomalies = group[anomaly_mask].copy()
         if not anomalies.empty:
-            anomalies['anomaly_type'] = 'Error Rate (Demo Threshold)'
+            anomalies['anomaly_type'] = 'Error Rate'
             anomalies['demo_error_threshold'] = error_threshold
             anomalies_list.append(anomalies)
     if anomalies_list:
@@ -361,6 +356,22 @@ def visualize_journey_forecast(journey_group, forecast_value, interval_minutes=1
     plt.show()
 
 #############################
+# ALERTS LOGGING FUNCTION
+#############################
+def write_alerts_to_json(alerts, filename):
+    """
+    Write a list of alert dictionaries to a JSON file.
+    
+    Each alert should have:
+    - "timestamp": timestamp of the alert in ISO format,
+    - "Priority": the severity (e.g., Critical, High, Moderate, Low, Planning),
+    - "description": a description message.
+    """
+    with open(filename, "w") as f:
+        json.dump(alerts, f, indent=4)
+    print(f"Alerts written to {filename}")
+
+#############################
 # MAIN FUNCTION: INTEGRATE STEPS
 #############################
 def main():
@@ -379,6 +390,32 @@ def main():
     print(rt_pattern_anomalies)
     print("\n--- Error Rate Anomalies (FORCED DEMO) ---")
     print(error_rate_anomalies)
+    
+    # ---------------------------------------------------
+    # Log Anomalies to JSON File
+    # ---------------------------------------------------
+    alerts = []
+    # Process pattern change anomalies
+    if not rt_pattern_anomalies.empty:
+        for _, anomaly in rt_pattern_anomalies.iterrows():
+            alert = {
+                "timestamp": anomaly["time_bin"].isoformat() if isinstance(anomaly["time_bin"], pd.Timestamp) else str(anomaly["time_bin"]),
+                "Priority": "Critical",
+                "description": f"Pattern change anomaly detected for environment '{anomaly['environment']}' at endpoint '{anomaly['endpoint']}' with slope per interval: {anomaly['slope_per_interval']:.2f}."
+            }
+            alerts.append(alert)
+    # Process error rate anomalies
+    if not error_rate_anomalies.empty:
+        for _, anomaly in error_rate_anomalies.iterrows():
+            alert = {
+                "timestamp": anomaly["time_bin"].isoformat() if isinstance(anomaly["time_bin"], pd.Timestamp) else str(anomaly["time_bin"]),
+                "Priority": "High",
+                "description": f"Error rate anomaly detected for environment '{anomaly['environment']}' at endpoint '{anomaly['endpoint']}' with error rate: {anomaly['error_rate']:.2f}."
+            }
+            alerts.append(alert)
+    
+    # Write alerts to a JSON file
+    write_alerts_to_json(alerts, "alerts.json")
     
     # ---------------------------------------------------
     # 2. Spike Detection (still dynamic)
