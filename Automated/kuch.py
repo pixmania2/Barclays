@@ -102,12 +102,44 @@ def compute_hybrid_avg_threshold(df, window_minutes, avg_func, ev_target_quantil
 #############################
 # DATA LOADING & PREPROCESSING
 #############################
-def load_data(filename):
-    df = pd.read_csv(filename)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    # Create an extra column for compatibility with sliding window functions.
+# def load_data(filename):
+#     df = pd.read_csv(filename)
+#     df['timestamp'] = pd.to_datetime(df['timestamp'])
+#     # Create an extra column for compatibility with sliding window functions.
+#     df["timestamp_dt"] = df["timestamp"]
+#     return df
+
+from elasticsearch import Elasticsearch
+
+def load_data_from_elasticsearch(index="logstash-microservices-*", size=10000):
+    es = Elasticsearch("http://localhost:9200")
+    query = {
+        "size": size,
+        "sort": [{"@timestamp": {"order": "desc"}}],
+        "_source": [
+            "timestamp", "service", "endpoint", "http_method", "http_status",
+            "response_time_ms", "error_flag", "environment", "request_id",
+            "trace_id", "span_id", "payload_size_bytes", "cpu_usage_percent",
+            "memory_usage_mb", "log_level", "error_message", "Browser", "Operating System"
+        ]
+    }
+    res = es.search(index=index, body=query)
+    records = [hit["_source"] for hit in res["hits"]["hits"]]
+    df = pd.DataFrame(records)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["timestamp_dt"] = df["timestamp"]
     return df
+
+
+def push_anomalies_to_elasticsearch(df, index_name):
+    es = Elasticsearch("http://localhost:9200")
+    if df.empty:
+        print(f"No anomalies for {index_name}")
+        return
+    for _, row in df.iterrows():
+        es.index(index=index_name, document=row.to_dict())
+    print(f"Pushed {len(df)} records to {index_name}")
+
 
 def preprocess_data(df, time_interval='15min'):
     df['time_bin'] = df['timestamp'].dt.floor(time_interval)
@@ -369,9 +401,14 @@ def write_alerts_to_json(alerts, filename):
 # MAIN FUNCTION: INTEGRATE STEPS
 #############################
 def main():
-    filename = "synthetic_full_datasetlakh.csv"
-    df = load_data(filename)
+    # filename = "synthetic_full_datasetlakh.csv"
+    # df = load_data(filename)
+    df = load_data_from_elasticsearch()
     grouped = preprocess_data(df, time_interval='15min')
+    push_anomalies_to_elasticsearch(rt_pattern_anomalies, "anomaly-pattern-change")
+    push_anomalies_to_elasticsearch(error_rate_anomalies, "anomaly-error-rate")
+    push_anomalies_to_elasticsearch(rt_spike_anomalies, "anomaly-response-spike")
+
     
     # ---------------------------------------------------
     # 1. FORCED Anomaly Detection to Guarantee Some Logs
